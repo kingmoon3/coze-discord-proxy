@@ -446,9 +446,10 @@ func SendMessage(c *gin.Context, channelID, cozeBotId, message string) (*discord
 	content = strings.Replace(content, `\u003c`, "<", -1)
 	content = strings.Replace(content, `\u003e`, ">", -1)
 
-	if runeCount := len([]rune(content)); runeCount > 50000 {
-		common.LogError(ctx, fmt.Sprintf("prompt已超过限制,请分段发送 [%v] %s", runeCount, content))
-		return nil, "", fmt.Errorf("prompt已超过限制,请分段发送 [%v]", runeCount)
+	tokens := common.CountTokens(content)
+	if tokens > 128*1000 {
+		common.LogError(ctx, fmt.Sprintf("prompt已超过限制,请分段发送 [%v] %s", tokens, content))
+		return nil, "", fmt.Errorf("prompt已超过限制,请分段发送 [%v]", tokens)
 	}
 
 	if len(UserAuthorizations) == 0 {
@@ -470,7 +471,7 @@ func SendMessage(c *gin.Context, channelID, cozeBotId, message string) (*discord
 		return nil, "", err
 	}
 
-	for i, sendContent := range common.ReverseSegment(content, 1888) {
+	for i, sendContent := range common.ReverseSegment(content, 1990) {
 		//sentMsg, myerr := Session.ChannelMessageSend(channelID, sendContent)
 		//sentMsgId := sentMsg.ID
 		// 4.0.0 版本下 用户端发送消息
@@ -487,9 +488,9 @@ func SendMessage(c *gin.Context, channelID, cozeBotId, message string) (*discord
 			return nil, "", fmt.Errorf("error sending message")
 		}
 
-		//time.Sleep(1 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 
-		if i == len(common.ReverseSegment(content, 1888))-1 {
+		if i == len(common.ReverseSegment(content, 1990))-1 {
 			return &discordgo.Message{
 				ID: sentMsgId,
 			}, userAuth, nil
@@ -554,7 +555,8 @@ func stayActiveMessageTask() {
 
 		// 计算距离下一个时间间隔
 		now := time.Now()
-		next := time.Date(now.Year(), now.Month(), now.Day(), 9, 0, 0, 0, now.Location())
+		// 9点05分 为了保证loadUserAuthTask每日任务执行完毕
+		next := time.Date(now.Year(), now.Month(), now.Day(), 9, 5, 0, 0, now.Location())
 
 		// 如果当前时间已经超过9点，那么等待到第二天的9点
 		if now.After(next) {
